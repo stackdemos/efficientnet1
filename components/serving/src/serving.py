@@ -34,3 +34,17 @@ class IssueSummarizationModel(object):
 
     def predict(self, input_text, feature_names):  # pylint: disable=unused-argument
         return np.asarray([[self.model.generate_issue_title(body[0])[1]] for body in input_text])
+    
+        get_custom_objects().update({
+            'ConvKernalInitializer': ConvKernalInitializer,
+            'Swish': Swish,
+            'DropConnect':DropConnect
+        })
+        if not self.model:
+            self.model = load_model(self.model_file)
+        # Do any preprocessing
+        prediction = self.model.predict(data=X)
+        # Do any postprocessing
+        return prediction
+
+

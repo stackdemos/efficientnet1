@@ -1,138 +1,238 @@
-'''
-usage example:
-
-train.py --input_body_preprocessor_dpkl=body_preprocessor.dpkl \
-  --input_title_preprocessor_dpkl=title_preprocessor.dpkl \
-  --input_train_title_vecs_npy=train_title_vecs.npy \
-  --input_train_body_vecs_npy=train_body_vecs.npy \
-  --output_model_h5=output_model.h5 \
-  --learning_rate=0.001
-'''
-
 import argparse, os, glob
 import numpy as np
-from keras.callbacks import CSVLogger, ModelCheckpoint
-from keras.layers import Input, GRU, Dense, Embedding, BatchNormalization
-from keras.models import Model
-from keras import optimizers
-from seq2seq_utils import load_decoder_inputs, load_encoder_inputs, load_text_processor
-import shutil, tempfile
+import logging
+# reduce tensorflow warnings in logs
+logging.disable(logging.WARNING)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+import tempfile
+import glob
+import shutil
+import pandas as pd
+from datetime import datetime
+import itertools
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras import models, layers, optimizers
+from tensorflow.keras.utils import get_custom_objects
+from tensorflow.keras.models import load_model
+from tensorflow.keras.callbacks import TensorBoard
+
+# Options: EfficientNetB0, EfficientNetB1, EfficientNetB2, EfficientNetB3
+# Higher the number, the more complex the model is.
+from efficientnet import EfficientNetB0 as Net
+from efficientnet import center_crop_and_resize, preprocess_input
+from efficientnet.layers import Swish, DropConnect
+from efficientnet.model import ConvKernalInitializer
 
 from utils import (get_value, get_value_as_int, get_value_as_float, copy)
 
+def read_input(original_dataset_dir, dataset_name, labels, test_size=0.2):
+    """Read input data and split it into train and test."""
+        
+    print(f"1. Original_dataset_dir:{original_dataset_dir} dataset_name:{dataset_name} labels: {labels}")
+    cat_images_list = []
+    labels_arr = labels.split(',')
+    labels_list = []
+    FILETYPES = ('*.jpg', '*.jpeg', '*.png')
+
+    for cat in labels_arr:
+        cat_images = [glob.glob(os.path.join(original_dataset_dir,cat,e)) for e in FILETYPES]  
+        cat_images = list(itertools.chain(*cat_images))
+        print("total " + cat + " images: {}".format(len(cat_images)))
+        labels_list += [cat]*len(cat_images)
+        cat_images_list.append(cat_images)
+
+    all_images_list = list(itertools.chain(*cat_images_list))
+    
+    assert len(all_images_list) == len(labels_list)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        all_images_list, labels_list, test_size=test_size, random_state=1)
+
+    num_train = len(X_train)
+    num_test = len(X_test)
+
+    train_df = pd.DataFrame({
+        'filename': X_train,
+        'label': y_train
+    })
+
+    val_df = pd.DataFrame({
+        'filename': X_test,
+        'label': y_test
+    })
+
+    return train_df, val_df
+
+
 # Parsing flags.
 parser = argparse.ArgumentParser()
-parser.add_argument("--input_body_preprocessor_dpkl", default=get_value('BODY_PP_FILE'))
-parser.add_argument("--input_title_preprocessor_dpkl", default=get_value('TITLE_PP_FILE'))
-parser.add_argument("--input_train_title_vecs_npy", default=get_value('TRAIN_TITLE_VECS'))
-parser.add_argument("--input_train_body_vecs_npy", default=get_value('TRAIN_BODY_VECS'))
-parser.add_argument("--output_model_h5", default=get_value('MODEL_FILE'))
-parser.add_argument("--learning_rate", default="0.001")
-parser.add_argument("--script_name_base", default='seq2seq')
+parser.add_argument("--batch_size")
+parser.add_argument("--width")
+parser.add_argument("--height")
+parser.add_argument("--epochs")
+parser.add_argument("--dropout_rate")
+parser.add_argument("--learning_rate")
+parser.add_argument("--dataset_name")
+parser.add_argument("--train_input")
+parser.add_argument("--model_version")
+parser.add_argument("--model_dir")
+parser.add_argument("--model_fname")
+parser.add_argument("--labels")
 parser.add_argument("--tempfile", default=True)
-parser.add_argument("--epochs", type=int, default=get_value_as_int('TRAIN_EPOCHS', 7))
-parser.add_argument("--batch_size", type=int, default=get_value_as_int('BATCH_SIZE', 1200))
-parser.add_argument("--validation_split", type=float, default=get_value_as_float('BATCH_SIZE', 0.12))
 args = parser.parse_args()
 print(args)
 
+LOG_DIR = args.model_dir + '/logs'
+tensorboard_callback = TensorBoard(log_dir=LOG_DIR)
+
+original_dataset_dir = args.train_input
+height = int(args.height)
+width = int(args.width)
+batch_size = int(args.batch_size)
+dropout_rate = float(args.dropout_rate)
+epochs = int(args.epochs)
+model_dir = args.model_dir
+model_file = model_dir + args.model_version + "/" + args.model_fname
 learning_rate = float(args.learning_rate)
+                    
+train_df, val_df = read_input(args.train_input, args.dataset_name, args.labels)
 
-encoder_input_data, doc_length = load_encoder_inputs(args.input_train_body_vecs_npy)
-decoder_input_data, decoder_target_data = load_decoder_inputs(args.input_train_title_vecs_npy)
+                                       
+#####################################
+# Train the model using EfficientNet.
+#####################################
+input_shape = (height, width, 3)
 
-num_encoder_tokens, body_pp = load_text_processor(args.input_body_preprocessor_dpkl)
-num_decoder_tokens, title_pp = load_text_processor(args.input_title_preprocessor_dpkl)
+num_train = len(train_df.index)
+num_test = len(val_df.index)
 
-# Arbitrarly set latent dimension for embedding and hidden units
-latent_dim = 300
+# loading pretrained conv base model
+conv_base = Net(weights='imagenet', include_top=False, input_shape=input_shape)
 
-###############
-# Encoder Model.
-###############
-encoder_inputs = Input(shape=(doc_length,), name='Encoder-Input')
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=40,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest')
 
-# Word embeding for encoder (ex: Issue Body)
-x = Embedding(num_encoder_tokens,
-              latent_dim,
-              name='Body-Word-Embedding',
-              mask_zero=False)(encoder_inputs)
-x = BatchNormalization(name='Encoder-Batchnorm-1')(x)
+# Note that the validation data should not be augmented!
+test_datagen = ImageDataGenerator(rescale=1./255)
 
-# We do not need the `encoder_output` just the hidden state.
-_, state_h = GRU(latent_dim, return_state=True, name='Encoder-Last-GRU')(x)
+train_generator = train_datagen.flow_from_dataframe(
+        dataframe=train_df,
+        directory=original_dataset_dir,
+        x_col="filename",
+        y_col="label",
+        target_size=(height, width),
+        batch_size=batch_size,
+        class_mode='categorical')
 
-# Encapsulate the encoder as a separate entity so we can just
-# encode without decoding if we want to.
-encoder_model = Model(inputs=encoder_inputs, outputs=state_h, name='Encoder-Model')
+validation_generator = test_datagen.flow_from_dataframe(
+            dataframe=val_df,
+            directory=original_dataset_dir,
+            x_col="filename",
+            y_col="label",
+            target_size=(height, width),
+            batch_size=batch_size,
+            class_mode='categorical')
 
-seq2seq_encoder_out = encoder_model(encoder_inputs)
+model = models.Sequential()
+model.add(conv_base)
+model.add(layers.GlobalMaxPooling2D(name="gap"))
+# model.add(layers.Flatten(name="flatten"))
+if dropout_rate > 0:
+    model.add(layers.Dropout(dropout_rate, name="dropout_out"))
+# model.add(layers.Dense(256, activation='relu', name="fc1"))
+model.add(layers.Dense(2, activation='softmax', name="fc_out"))
 
-################
-# Decoder Model.
-################
-decoder_inputs = Input(shape=(None,), name='Decoder-Input')  # for teacher forcing
+conv_base.trainable = False
 
-# Word Embedding For Decoder (ex: Issue Titles)
-dec_emb = Embedding(num_decoder_tokens,
-                    latent_dim,
-                    name='Decoder-Word-Embedding',
-                    mask_zero=False)(decoder_inputs)
-dec_bn = BatchNormalization(name='Decoder-Batchnorm-1')(dec_emb)
+model.compile(loss='categorical_crossentropy',
+            optimizer=optimizers.RMSprop(lr=learning_rate),
+            metrics=['acc'])
+print('Training model...')
+history = model.fit_generator(
+    train_generator,
+    steps_per_epoch= num_train //batch_size,
+    epochs=epochs,
+    validation_data=validation_generator,
+    validation_steps= num_test //batch_size,
+    verbose=1)        #        callbacks=[tensorboard_callback],
+#         use_multiprocessing=True,
+#         workers=4)
 
-# Set up the decoder, using `decoder_state_input` as initial state.
-decoder_gru = GRU(latent_dim, return_state=True, return_sequences=True, name='Decoder-GRU')
-decoder_gru_output, _ = decoder_gru(dec_bn, initial_state=seq2seq_encoder_out)
-x = BatchNormalization(name='Decoder-Batchnorm-2')(decoder_gru_output)
 
-# Dense layer for prediction
-decoder_dense = Dense(num_decoder_tokens, activation='softmax', name='Final-Output-Dense')
-decoder_outputs = decoder_dense(x)
+acc = history.history['acc']
+val_acc = history.history['val_acc']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
 
-################
-# Seq2Seq Model.
-################
+epochs_x = range(len(acc))
 
-seq2seq_Model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+conv_base.trainable = True
 
-seq2seq_Model.compile(optimizer=optimizers.Nadam(lr=learning_rate),
-                      loss='sparse_categorical_crossentropy')
+set_trainable = False
+for layer in conv_base.layers:
+    if layer.name == 'multiply_16':
+        set_trainable = True
+    if set_trainable:
+        layer.trainable = True
+    else:
+        layer.trainable = False
 
-seq2seq_Model.summary()
+model.compile(loss='categorical_crossentropy',
+            optimizer=optimizers.RMSprop(lr=2e-5),
+            metrics=['acc'])
 
-script_name_base = args.script_name_base
-csv_logger = CSVLogger('{:}.log'.format(script_name_base))
-model_checkpoint = ModelCheckpoint(
-    '{:}.epoch{{epoch:02d}}-val{{val_loss:.5f}}.hdf5'.format(script_name_base),
-    save_best_only=True
-)
+history = model.fit_generator(
+    train_generator,
+    steps_per_epoch= num_train //batch_size,
+    epochs=epochs,
+    validation_data=validation_generator,
+    validation_steps= num_test //batch_size,
+    verbose=1)
 
-history = seq2seq_Model.fit(
-    [encoder_input_data, decoder_input_data],
-    np.expand_dims(decoder_target_data, -1),
-    callbacks=[csv_logger, model_checkpoint],
-    batch_size=args.batch_size,
-    epochs=args.epochs,
-    validation_split=args.validation_split)
-
-print("Saving model...")
 #############
 # Save model.
 #############
+#    print('Saving model to remote...')
+#    mc_remote = Minio(REMOTE_MINIO_SERVER,
+#                  access_key=ACCESS_KEY,
+#                  secret_key=SECRET_KEY,
+#                  secure=False)
+#
+#    logging.info("Model export success: %s", model_fname)
+#    with tempfile.NamedTemporaryFile(suffix='.h5') as fp:
+#        model.save(fp.name)
+#        try:
+#            print(mc_remote.fput_object('models', os.path.join(model_version, model_fname),fp.name))
+#        except ResponseError as err:
+#            print(err)
+
+print("Saving model...")
+
 if args.tempfile:
+    print('Saving model to local...')
     # Workaround because of: at present goofys support only parallel write
     # see: https://github.com/kahing/goofys/issues/298
     # TODO configure h5py to write sequentially
     # TODO consider other flex driver
     _, fname = tempfile.mkstemp('.h5')
     print(f"Saving to {fname}")
-    seq2seq_Model.save(fname)
-    copy(fname, args.output_model_h5)
-    to_dir = dirname = os.path.dirname(args.output_model_h5)
+    model.save(fname)
+    copy(fname, model_file)
+    to_dir = dirname = os.path.dirname(model_file)
     print("Saving weights...")
     for f in glob.iglob('/tmp/*.hdf5'):
         copy(f, to_dir)
+    print('Saved models')
 else:
-    print(f"Saving to {args.output_model_h5}")
-    seq2seq_Model.save(args.output_model_h5)
+    print(f"Saving to {model_file}")
+    seq2seq_Model.save(model_file)
 print("Done!")

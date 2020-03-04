@@ -12,5 +12,5 @@ bernoulli~=0.1
 h5py~=2.10.0
 joblib~=0.14.0
 IPython
-# git clone https://github.com/google/seq2seq.git \
-./seq2seq/
+scikit-image
+minio
