@@ -1,0 +1,51 @@
+apiVersion: "machinelearning.seldon.io/v1alpha2"
+kind: "SeldonDeployment"
+metadata:
+  name: "efficientnetmodel-v27"
+  namespace: "kubeflow"
+  labels:
+    app: "seldon"
+spec:
+  annotations:
+    deployment_version: "v27"
+    project_name: "efficientnetmodel"
+  name: "efficientnetmodel"
+  oauth_key: "c9c5280073df9b67007e46da8c4398e7"
+  oauth_secret: "e42e824e56deb10c17fa72b48aceb304"
+  predictors:
+  - annotations:
+      predictor_version: "v27"
+    componentSpecs:
+    - spec:
+        containers:
+        - name: "efficientnetmodel"
+          image: "ml1-harbor.svc.ml1.demo51.superhub.io/library/seldon:v27"
+          imagePullPolicy: "Always"
+          env:
+          - name: SERVICE_TYPE
+            value: "MODEL"
+          - name: PERSISTENCE
+            value: "0"
+          - name: MODEL_FILE
+            value: "/mnt/s3/models/v24/pneumothorax_03_08_20.h5"
+          - name: TITLE_PP_FILE
+            value: ""
+          - name: BODY_PP_FILE
+            value: ""
+          volumeMounts:
+          - mountPath: "/mnt/s3"
+            name: "persistent-storage"
+        terminationGracePeriodSeconds: 1
+        volumes:
+        - name: "persistent-storage"
+          volumeSource:
+            persistentVolumeClaim:
+              claimName: "efficientnet1-default-data"
+    graph:
+      children: []
+      endpoint:
+        type: "REST"
+      name: "efficientnetmodel"
+      type: "MODEL"
+    name: "efficientnetmodel"
+    replicas: 1

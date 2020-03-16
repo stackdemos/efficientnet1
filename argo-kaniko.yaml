@@ -1,0 +1,79 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  annotations:
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Build images that will
+      be used by the pipeline", "inputs": [{"name": "image"}, {"name": "context"},
+      {"default": "Dockerfile", "name": "dockerfile"}], "name": "Pipeline images"}'
+  generateName: pipeline-images-
+spec:
+  arguments:
+    parameters:
+    - name: image
+    - name: context
+    - name: dockerfile
+      value: Dockerfile
+  entrypoint: pipeline-images
+  serviceAccountName: pipeline-runner
+  templates:
+  - container:
+      args:
+      - --destination
+      - '{{inputs.parameters.image}}'
+      - --dockerfile
+      - '{{inputs.parameters.dockerfile}}'
+      - --context
+      - '{{inputs.parameters.context}}'
+      - --cache
+      command: []
+      image: gcr.io/kaniko-project/executor:latest
+      volumeMounts:
+      - mountPath: /mnt/s3
+        name: pvolume-f85a60b7a5f75e8bfc5b62b710885c2a172df6b0a29b73cc66dc249
+      - mountPath: /kaniko/.docker
+        name: vol-a101618c-661
+    inputs:
+      parameters:
+      - name: context
+      - name: dockerfile
+      - name: image
+    metadata:
+      annotations:
+        pipelines.kubeflow.org/component_spec: '{"description": "Build and push docker
+          image using Kaniko", "inputs": [{"description": "Destination image to build",
+          "name": "image", "type": "String"}, {"default": "Dockerfile", "description":
+          "Name of the dockerfile to build", "name": "dockerfile", "type": "String"},
+          {"default": ".", "description": "Directory where build should happen (must
+          exist inside kaniko container", "name": "context", "type": "String"}], "name":
+          "kaniko", "outputs": []}'
+    name: kaniko
+  - dag:
+      tasks:
+      - arguments:
+          parameters:
+          - name: context
+            value: '{{inputs.parameters.context}}'
+          - name: dockerfile
+            value: '{{inputs.parameters.dockerfile}}'
+          - name: image
+            value: '{{inputs.parameters.image}}'
+        name: kaniko
+        template: kaniko
+    inputs:
+      parameters:
+      - name: context
+      - name: dockerfile
+      - name: image
+    name: pipeline-images
+  volumes:
+  - name: pvolume-f85a60b7a5f75e8bfc5b62b710885c2a172df6b0a29b73cc66dc249
+    persistentVolumeClaim:
+      claimName: efficientnet1-default-data
+  - name: vol-a101618c-661
+    projected:
+      sources:
+      - secret:
+          items:
+          - key: .dockerconfigjson
+            path: config.json
+          name: efficientnet1-pullsecret

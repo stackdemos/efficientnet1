@@ -1,0 +1,193 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  annotations:
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "\n  Download dataset,
+      \n  Split data set for training and validation, \n  Clean and preprocess data,
+      \n  Train the model\n  ", "inputs": [{"name": "datasetDir"}, {"name": "datasetName"},
+      {"name": "labels"}, {"name": "remoteMinioServer"}, {"name": "accessKey"}, {"name":
+      "secretKey"}, {"name": "batchSize"}, {"name": "width"}, {"name": "height"},
+      {"name": "epochs"}, {"name": "dropoutRate"}, {"name": "learningRate"}, {"name":
+      "trainInput"}, {"name": "modelVersion"}, {"name": "modelDir"}, {"name": "modelFname"}],
+      "name": "Training"}'
+  generateName: training-
+spec:
+  arguments:
+    parameters:
+    - name: datasetDir
+    - name: datasetName
+    - name: labels
+    - name: remoteMinioServer
+    - name: accessKey
+    - name: secretKey
+    - name: batchSize
+    - name: width
+    - name: height
+    - name: epochs
+    - name: dropoutRate
+    - name: learningRate
+    - name: trainInput
+    - name: modelVersion
+    - name: modelDir
+    - name: modelFname
+  entrypoint: training
+  serviceAccountName: pipeline-runner
+  templates:
+  - container:
+      args:
+      - --dataset_dir
+      - '{{inputs.parameters.datasetDir}}'
+      - --dataset_name
+      - '{{inputs.parameters.datasetName}}'
+      - --labels
+      - '{{inputs.parameters.labels}}'
+      - --remote_minio_server
+      - '{{inputs.parameters.remoteMinioServer}}'
+      - --access_key
+      - '{{inputs.parameters.accessKey}}'
+      - --secret_key
+      - '{{inputs.parameters.secretKey}}'
+      command:
+      - /usr/local/bin/python
+      - download.py
+      image: ml1-harbor.svc.ml1.demo51.superhub.io/library/training:v31
+      volumeMounts:
+      - mountPath: /mnt/s3
+        name: pvolume-f85a60b7a5f75e8bfc5b62b710885c2a172df6b0a29b73cc66dc249
+    inputs:
+      parameters:
+      - name: accessKey
+      - name: datasetDir
+      - name: datasetName
+      - name: labels
+      - name: remoteMinioServer
+      - name: secretKey
+    name: download
+  - container:
+      args:
+      - --batch_size
+      - '{{inputs.parameters.batchSize}}'
+      - --width
+      - '{{inputs.parameters.width}}'
+      - --height
+      - '{{inputs.parameters.height}}'
+      - --epochs
+      - '{{inputs.parameters.epochs}}'
+      - --dropout_rate
+      - '{{inputs.parameters.dropoutRate}}'
+      - --learning_rate
+      - '{{inputs.parameters.learningRate}}'
+      - --dataset_name
+      - '{{inputs.parameters.datasetName}}'
+      - --train_input
+      - '{{inputs.parameters.trainInput}}'
+      - --model_version
+      - '{{inputs.parameters.modelVersion}}'
+      - --model_dir
+      - '{{inputs.parameters.modelDir}}'
+      - --model_fname
+      - '{{inputs.parameters.modelFname}}'
+      - --labels
+      - '{{inputs.parameters.labels}}'
+      - --tempfile
+      - 'True'
+      command:
+      - /usr/local/bin/python
+      - train.py
+      image: ml1-harbor.svc.ml1.demo51.superhub.io/library/training:v31
+      volumeMounts:
+      - mountPath: /mnt/s3
+        name: pvolume-f85a60b7a5f75e8bfc5b62b710885c2a172df6b0a29b73cc66dc249
+    inputs:
+      parameters:
+      - name: batchSize
+      - name: datasetName
+      - name: dropoutRate
+      - name: epochs
+      - name: height
+      - name: labels
+      - name: learningRate
+      - name: modelDir
+      - name: modelFname
+      - name: modelVersion
+      - name: trainInput
+      - name: width
+    name: train
+    outputs:
+      artifacts:
+      - name: train-train
+        path: /tmp/seq2seq.log
+  - dag:
+      tasks:
+      - arguments:
+          parameters:
+          - name: accessKey
+            value: '{{inputs.parameters.accessKey}}'
+          - name: datasetDir
+            value: '{{inputs.parameters.datasetDir}}'
+          - name: datasetName
+            value: '{{inputs.parameters.datasetName}}'
+          - name: labels
+            value: '{{inputs.parameters.labels}}'
+          - name: remoteMinioServer
+            value: '{{inputs.parameters.remoteMinioServer}}'
+          - name: secretKey
+            value: '{{inputs.parameters.secretKey}}'
+        name: download
+        template: download
+      - arguments:
+          parameters:
+          - name: batchSize
+            value: '{{inputs.parameters.batchSize}}'
+          - name: datasetName
+            value: '{{inputs.parameters.datasetName}}'
+          - name: dropoutRate
+            value: '{{inputs.parameters.dropoutRate}}'
+          - name: epochs
+            value: '{{inputs.parameters.epochs}}'
+          - name: height
+            value: '{{inputs.parameters.height}}'
+          - name: labels
+            value: '{{inputs.parameters.labels}}'
+          - name: learningRate
+            value: '{{inputs.parameters.learningRate}}'
+          - name: modelDir
+            value: '{{inputs.parameters.modelDir}}'
+          - name: modelFname
+            value: '{{inputs.parameters.modelFname}}'
+          - name: modelVersion
+            value: '{{inputs.parameters.modelVersion}}'
+          - name: trainInput
+            value: '{{inputs.parameters.trainInput}}'
+          - name: width
+            value: '{{inputs.parameters.width}}'
+        dependencies:
+        - download
+        name: train
+        template: train
+    inputs:
+      parameters:
+      - name: accessKey
+      - name: batchSize
+      - name: datasetDir
+      - name: datasetName
+      - name: dropoutRate
+      - name: epochs
+      - name: height
+      - name: labels
+      - name: learningRate
+      - name: modelDir
+      - name: modelFname
+      - name: modelVersion
+      - name: remoteMinioServer
+      - name: secretKey
+      - name: trainInput
+      - name: width
+    name: training
+  volumes:
+  - name: pvolume-f85a60b7a5f75e8bfc5b62b710885c2a172df6b0a29b73cc66dc249
+    persistentVolumeClaim:
+      claimName: efficientnet1-default-data
+  - name: pvolume-f85a60b7a5f75e8bfc5b62b710885c2a172df6b0a29b73cc66dc249
+    persistentVolumeClaim:
+      claimName: efficientnet1-default-data

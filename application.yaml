@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    getambassador.io/config: |-
+      ---
+      apiVersion: ambassador/v0
+      kind: Mapping
+      name: efficientnet1
+      prefix: /efficientnet1/
+      rewrite: /
+      timeout_ms: 300000
+      service: efficientnet1-flask.kubeflow:80
+      use_websocket: false
+  name: "efficientnet1-flask"
+  labels:
+    app: "efficientnet1"
+    tier: "frontend"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: "http-server"
+  selector:
+    app: "efficientnet1"
+    tier: "frontend"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: "efficientnet1-flask"
+spec:
+  selector:
+    matchLabels:
+      app: "efficientnet1"
+      tier: "frontend"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: "efficientnet1"
+        tier: "frontend"
+    spec:
+      containers:
+      - name: "efficientnet1"
+        image: "ml1-harbor.svc.ml1.demo51.superhub.io/library/flask:v31"
+        imagePullPolicy: Always
+        env:
+        - name: SERVER_ADDR
+          value: "seldon-seldon-apiserver.kubeflow:8080"
+        - name: SAMPLE_DATA
+          value: ""
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: "efficientnet1-nb-keyring"
+              key: github_token
+        - name: OAUTH_KEY
+          value: "c9c5280073df9b67007e46da8c4398e7"
+        - name: OAUTH_SECRET
+          value: "e42e824e56deb10c17fa72b48aceb304"
+        volumeMounts:
+        - mountPath: "/mnt/s3"
+          name: "data-dir"
+        ports:
+        - name: http-server
+          containerPort: 80
+        # resources:
+        #   limits:
+        #     cpu: "1"
+        #     memory: 4Gi
+        #   requests:
+        #     cpu: "1"
+        #     memory: 1Gi
+      volumes:
+      - name: "data-dir"
+        persistentVolumeClaim:
+          claimName: "efficientnet1-default-data"
