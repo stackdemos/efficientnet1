@@ -127,6 +127,7 @@ def train():
         exp = client.get_experiment(experiment_name=APPLICATION_NAME)
     except:
         exp = client.create_experiment(APPLICATION_NAME)
+    # Use the following API to find Pipeline Id for your Kubeflow pipeline: https://kubeflow.svc.ml1.demo51.superhub.io/pipeline/apis/v1beta1/pipelines
     print (f"Experiment name: {exp.name}")    
     run = client.run_pipeline(exp.id, f'Training model : {datetime.now():%m%d-%H%M}', 
                           params={
