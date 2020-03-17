@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+    <title>EfficientNet Model Training</title>
+  </head>
+  <body class="text-center">
+    <form class="form-signin" action="summary" method="post">
+      <img class="mb-4" src="https://d7umqicpi7263.cloudfront.net/img/product/a27c216b-2588-4568-8b6a-e9515dda2803/f3295168-e97a-4733-b5a8-57ffb7374f24.png" alt="" width="92" height="92">
+      <h1 style="margin-top: -20px;">EfficientNet Model Training</h1>
+      <p style="margin-left: 20%; margin-right: 20%;">This is a demo of Kubeflow Pipelines SDK</p>
+      <h3 class="h3 mb-3 font-weight-normal">Lookup experiment</h3>
+      <p><button id="get_experiment_button" name="get_experiment_button" type="button">Get Experiment</button></p>
+      <p><textarea id="experiment_textarea" class="scrollabletextbox" name="experiment_textarea" rows=3 cols=100></textarea></p>
+      <h3 class="h3 mb-3 font-weight-normal">Train the Model - Enter Experiment Dataset Directory</h3>
+      <p><input id="dataset_dir" name="dataset_dir" type="text" size="100" value="/mnt/s3/santosh-test/datasets"></input></p>
+      <p><input id="epochs" name="epochs" type="text" size="100" value="5" id="epochs"></input></p>
+      <p><button id="train_button" name="train_button" type="button">Run Model Training</button></p>
+      <h3 class="h3 mb-3 font-weight-normal">Test Object Detection</h3>
+      <p><input id="test_image" name="test_image" type="text" size="100" value="/mnt/s3/test/CXR354_IM-1731-3003.png"></input></p>
+      <p><button id="submit_button" type="button">Run Experiment</button></p>
+
+    </form>
+    <div id="generated_text_div" style="display: none;">
+      <h2>Experiment Status 1</h2>
+      <p style="margin-right: 20%; margin-left: 20%;" id="experiment_status"></p>
+    </div>
+    <p style="font-style: italic; margin-right: 20%; margin-left: 20%; margin-top: 40px;" id="generated_text">This demo is run using <a target="_blank" href="https://github.com/kubeflow/kubeflow/">Kubeflow</a> - a machine learning toolkit for Kubernetes. Kubeflow is dedicated to making deployment of machine learning on Kubernetes simple, portable and scalable.</p>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+    <script type="text/javascript">
+      $("#get_experiment_button").click(function(){
+        var dataset_dir = $("#dataset_dir").val();
+        var epochs = $("#epochs").val();
+        $.post(window.location.pathname + "get_experiment", {dataset_dir:dataset_dir, epochs:epochs}, function(result){
+                  $("#experiment_textarea").val("result : " + result.experiment_name+" "+result.id);
+        });
+      });
+      $("#train_button").click(function(){
+          $("#generated_text").html("");
+          var dataset_dir = $("#dataset_dir").val();
+          var epochs = $("#epochs").val();
+          $.post(window.location.pathname + "train", {dataset_dir:dataset_dir, epochs:epochs}, function(result){
+                  $("#experiment_textarea").val("result : " + result);
+          });
+      });
+      $("#submit_button").click(function(){
+          $("#generated_text").html("");
+          var test_image = $("#test_image").val();
+          $.post(window.location.pathname + "summary", {test_image: test_image}, function(result){
+              $("#generated_text").html("“" + result.summary + "”");
+              $("#experiment_textarea").val(result.body);
+              $("#generated_text_div").show();
+          });
+      });
+    </script>
+  </body>
+</html>
+

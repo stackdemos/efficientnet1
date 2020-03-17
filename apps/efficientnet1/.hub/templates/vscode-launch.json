@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "cloudcode.kubernetes",
+      "request": "launch",
+      "name": "%s: Run on Kubernetes",
+      "skaffoldConfig": "${workspaceFolder}/skaffold.yaml",
+      "watch": true,
+      "localRoot": "${workspaceFolder}/src",
+      "cleanUp": true,
+      "portForward": true,
+      "imageRegistry": "CHANGEMEPLEASE",
+      "profile": "incluster"
+    },
+    {
+      "type": "cloudcode.kubernetes",
+      "language": "Python",
+      "request": "attach",
+      "debugPort": 3000,
+      "localRoot": "${workspaceFolder}/src",
+      "remoteRoot": "/app",
+      "name": "%s: Attach to running container",
+      "podSelector": {
+        "app": "%s"
+      },
+      "imageRegistry": "CHANGEMEPLEASE",
+      "profile": "incluster"
+    },
+    {
+      "name": "%s: Run locally",
+      "type": "python",
+      "request": "launch",
+      "module": "flask",
+      "env": {
+        "FLASK_APP": "src/app.py",
+        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "0"
+      },
+      "args": [
+        "run",
+        "--no-debugger",
+        "--no-reload"
+      ],
+      "jinja": true
+    }
+  ]
+}

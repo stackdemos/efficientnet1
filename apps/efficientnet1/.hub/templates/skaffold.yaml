@@ -1,0 +1,46 @@
+apiVersion: skaffold/v1
+kind: Config
+metadata:
+  name: CHANGEMEPLEASE
+build:
+  artifacts:
+  - image: CHANGEMEPLEASE
+    sync:
+      manual:
+      - src: 'src/**/*.py'
+        dest: /app
+        strip: src/
+      - src: 'src/static/**'
+        dest: /app
+        strip: src/
+      - src: 'src/templates/**'
+        dest: /app
+        strip: src/
+  tagPolicy:
+    dateTime:
+      format: 20060102-150405
+# portForward: {}
+deploy:
+  # kustomize:
+  #   path: .
+  kubectl:
+    manifests:
+    - k8s/*
+profiles:
+- name: local
+  activation:
+  - env: KUBECONFIG=!
+  build:
+    local:
+      useDockerCLI: true
+  test:
+  # we cannot do structure tests for incluster setup because 
+  # container-structure-test locally and skaffold doesn't do 'docker pull' after build
+  - image: CHANGEMEPLEASE
+    structureTests:	
+    - ./test/*.yaml
+- name: incluster
+  build:
+    cluster:
+      dockerConfig:
+        path: .hub/dockerconfig.json

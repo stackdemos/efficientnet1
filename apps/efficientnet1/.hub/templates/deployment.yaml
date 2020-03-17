@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: CHANGEMEPLEASE
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: CHANGEMEPLEASE
+  template:
+    metadata:
+      labels:
+        app: CHANGEMEPLEASE
+    spec:
+      containers:
+      - image: application
+        imagePullPolicy: Always
+        name: applicaiton
+        env:
+        - name: SERVER_ADDR
+          value: "seldon-seldon-apiserver.kubeflow:8080"
+        - name: SAMPLE_DATA
+          value: ""
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: "efficientnet1-nb-keyring"
+              key: github_token
+        - name: OAUTH_KEY
+          value: "c9c5280073df9b67007e46da8c4398e7"
+        - name: OAUTH_SECRET
+          value: "e42e824e56deb10c17fa72b48aceb304"
+        volumeMounts:
+        - mountPath: "/mnt/s3"
+          name: "data-dir"
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: "data-dir"
+        persistentVolumeClaim:
+          claimName: "efficientnet1-default-data"

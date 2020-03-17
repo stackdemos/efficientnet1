@@ -1,0 +1,110 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Pylint",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "-m",
+        "pylint",
+        "**/*.py"
+      ],
+      "group": "test",
+      "options": {
+        "cwd": "${workspaceFolder}/src"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Skaffold",
+      "type": "shell",
+      "command": "skaffold",
+      "args": [
+        "${input:skaffoldArg}"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "env": {
+          "SKAFFOLD_PROFILE": "incluster"
+        },
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "SuperHub: generate all",
+      "type": "shell",
+      "command": "make",
+      "problemMatcher": [],
+      "args": [
+        "generate",
+        "FORCE=1"
+      ],
+      "group": "none",
+      "options": {
+        "cwd": "${workspaceFolder}/.hub"
+      }
+    },
+    {
+      "label": "SuperHub: genrate missing files",
+      "type": "shell",
+      "command": "make",
+      "problemMatcher": [],
+      "args": [
+        "generate"
+      ],
+      "group": "none",
+      "options": {
+        "cwd": "${workspaceFolder}/.hub"
+      }
+    },
+    {
+      "label": "Kubernetes: delete kaniko secret",
+      "type": "shell",
+      "command": "kubectl",
+      "args": [
+        "delete",
+        "secret",
+        "docker-cfg"
+      ],
+      "group": "none",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "type": "shell",
+      "problemMatcher": [],
+      "label": "Ingress: open in browser",
+      "osx": {
+        "command": "open"
+      },
+      "windows": {
+        "command": "explorer.exe"
+      },
+      "args": [
+        "https://$HUB_APP_NAME.$HUB_INGRESS_HOST"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "skaffoldArg",
+      "description": "Skaffold command",
+      "default": "dev",
+      "options": [
+        "dev",
+        "run",
+        "build",
+        "deploy",
+        "delete",
+        "debug"
+      ],
+      "type": "pickString"
+    }
+  ]
+}
