@@ -112,7 +112,7 @@ def train():
     DATASET_DIR = request.form['dataset_dir']
     EPOCHS = request.form['epochs']
     DATASET_NAME = 'normal_pneumothorax'
-    LABELS = 'normal_pneumothorax'
+    LABELS = 'normal,pneumothorax'
     REMOTE_MINIO_SERVER = '206.189.86.150:32782'
     ACCESS_KEY = 'admin'
     SECRET_KEY = 'deeplearning'
@@ -129,7 +129,7 @@ def train():
         exp = client.create_experiment(APPLICATION_NAME)
     # Use the following API to find Pipeline Id for your Kubeflow pipeline: https://kubeflow.svc.ml1.demo51.superhub.io/pipeline/apis/v1beta1/pipelines
     print (f"Experiment name: {exp.name}")    
-    run = client.run_pipeline(exp.id, f'Training model : {datetime.now():%m%d-%H%M}', 
+    run = client.run_pipeline(exp.id, f'Training model : {datetime.now():%m%d-%H%M}',
                           params={
                               'datasetDir': DATASET_DIR,
                               'datasetName': DATASET_NAME,
@@ -140,7 +140,7 @@ def train():
                               'batchSize': 32,
                               'width': 150,
                               'height': 150,
-                              'epochs': EPOCHS,
+                              'epochs': 5,
                               'dropoutRate': 0.2,
                               'learningRate': 0.00002,
                               'trainInput': os.path.join(DATASET_DIR, DATASET_NAME),
@@ -148,7 +148,7 @@ def train():
                               'modelDir': MODEL_DIR,
                               'modelFname': MODEL_FNAME,
                           }, pipeline_id='75fdc7c1-1b49-4a8c-ac96-13b5af4a1364')
-    return jsonify({'id': exp.id, 'experiment_name': exp.name, 'status': 'running'} )
+    return (f'Submitted {run.name} : {run.id}')
 
 @application.route('/status')
 def status():

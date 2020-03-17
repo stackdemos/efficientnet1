@@ -20,6 +20,6 @@ h5py~=2.10.0
 joblib~=0.14.0
 IPython
 scikit-image
-kfp==0.1.23
+kfp==0.1.38
 boto3>=1.0
 
